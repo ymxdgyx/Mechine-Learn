@@ -1,0 +1,55 @@
+聚类
+1.确定k    （几个聚类点）
+2.选取初始聚类点    （选的位置）
+3.欧氏距离将点进行归属，（距离短的属于哪个聚类中心点）
+4.选取新的聚类中心点    （在一堆里面取平均值，得到新的聚类中心点）
+5.直到新的聚类中心点不再变化，或者变化幅度很小。
+
+
+package one
+
+import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.mllib.clustering.{KMeans, KMeansModel}
+import org.apache.spark.sql.{Row, SparkSession}
+import org.apache.spark.sql.types._
+
+object kmeans {
+  def main(args: Array[String]): Unit = {
+    val spark = SparkSession
+      .builder()
+      .appName("Spark SQL Example")
+      .config("spark.some.config.option", "some-value")
+      .getOrCreate()
+    val sc = spark.sparkContext
+
+    val iSchema: StructType = StructType(Array(
+      StructField("0", DoubleType, nullable=true),
+      StructField("1", DoubleType, nullable=true),
+      StructField("2", DoubleType, nullable=true),
+      StructField("3", DoubleType, nullable=true),
+      StructField("4", StringType, nullable=true)
+    ))
+    val idf = spark.read.schema(iSchema).option("header",false).option("delimiter",",").csv("src/iris.data").drop("4")
+    val irdd = idf.rdd
+    irdd.foreach(println)
+
+//    val scaledDataOnly_rdd = irdd.map{x:Row => x.getAs[org.apache.spark.mllib.linalg.Vector](0)}
+//    scaledDataOnly_rdd.foreach(println)
+    val ii = irdd.map(s => Vectors.dense(s.getAs[Double](0), s.getAs[Double](1), s.getAs[Double](2), s.getAs[Double](3))).cache()
+    irdd.foreach(println)
+
+    // Cluster the data into two classes using KMeans
+    val numClusters = 3
+    val numIterations = 20
+    val clusters = KMeans.train(ii, numClusters, numIterations)
+
+    // Evaluate clustering by computing Within Set Sum of Squared Errors
+    val WSSSE = clusters.computeCost(ii)
+    println("Within Set Sum of Squared Errors = " + WSSSE)
+
+    // Save and load model
+    clusters.save(sc, "target/org/apache/spark/KMeansExample/KMeansModel")
+    val sameModel = KMeansModel.load(sc, "target/org/apache/spark/KMeansExample/KMeansModel")
+
+  }
+}
