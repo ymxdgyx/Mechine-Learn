@@ -1,0 +1,80 @@
+package one
+//import org.apache.spark.ml.feature.{LabeledPoint, VectorAssembler}
+//import org.apache.spark.ml.feature.VectorAssembler
+import org.apache.spark.ml.feature.VectorAssembler
+import org.apache.spark.mllib.regression.LabeledPoint
+import org.apache.spark.mllib.tree.RandomForest
+import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.types._
+import org.apache.spark.mllib.util.MLUtils
+
+object acrt {
+  def main(args: Array[String]): Unit = {
+    val spark = SparkSession
+      .builder()
+      .appName("Spark SQL Example")
+      .config("spark.some.config.option", "some-value")
+      .getOrCreate()
+
+    val sch: StructType = StructType(Array(
+      StructField("label", DoubleType, nullable=true),
+      StructField("1", DoubleType, nullable=true),
+      StructField("2", DoubleType, nullable=true),
+      StructField("3", DoubleType, nullable=true),
+      StructField("4", DoubleType, nullable=true),
+      StructField("5", DoubleType, nullable=true),
+      StructField("6", DoubleType, nullable=true),
+      StructField("7", DoubleType, nullable=true),
+      StructField("8", DoubleType, nullable=true),
+      StructField("9", DoubleType, nullable=true),
+      StructField("10", DoubleType, nullable=true),
+      StructField("11", DoubleType, nullable=true),
+      StructField("12", DoubleType, nullable=true),
+      StructField("13", DoubleType, nullable=true)
+    ))
+
+    val text = spark.read.option("header", false).option("delimiter",",").schema(sch).csv("src/classifyData.txt")
+    //text.show()
+    val assembler = new VectorAssembler().setInputCols(Array("1","2","3","4","5","6","7","8","9","10","11","12","13")).setOutputCol("features")
+
+    val userProfile = assembler.transform(text).select("label","features")
+    //userProfile.show()
+
+//重点在这：用ML的VectorAssembler构建的vector，必须要有这个格式的转换，从ML的vector转成 MLlib的vector，才能给MLlib里面的分类器(RandomForest.trainClassifier 接收的rdd[labelPoint是mllib包下的])使用(这两种vector还真是个坑，要注意)
+    val userProfile2 = MLUtils.convertVectorColumnsFromML(userProfile, "features")
+
+//普通rdd转labelpoint rdd
+    val rdd_Data : RDD[LabeledPoint]= userProfile2.rdd.map {
+      x =>
+        val label = x.getAs[Double]("label")
+        val features = x.getAs[org.apache.spark.mllib.linalg.Vector]("features")
+        LabeledPoint(label, features)
+    }
+
+//对数据进行切分，得到一部分自测数据
+    val splits = rdd_Data.randomSplit(Array(0.7, 0.3))
+    val (trainingData, testData) = (splits(0), splits(1))
+
+    val numClasses = 10 //label类别的上限
+    val categoricalFeaturesInfo = Map[Int, Int]()
+    val numTrees = 3 // Use more in practice.
+    val featureSubsetStrategy = "auto" // Let the algorithm choose.
+    val impurity = "gini"
+    val maxDepth = 4
+    val maxBins = 32
+
+//得到模型
+    val model = RandomForest.trainClassifier(trainingData,numClasses, categoricalFeaturesInfo,
+      numTrees, featureSubsetStrategy, impurity, maxDepth, maxBins)
+
+    val labelAndPreds = testData.map { point =>
+      val prediction = model.predict(point.features)
+      (point.label, prediction)
+    }
+
+    val testErr = labelAndPreds.filter(r => r._1 != r._2).count.toDouble / testData.count()
+    println("Test Error = " + testErr)
+    println("Learned classification forest model:\n" + model.toDebugString)
+  }
+}
