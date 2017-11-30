@@ -1,3 +1,6 @@
+//随机森林一般使用的cart树
+
+
 package one
 //import org.apache.spark.ml.feature.{LabeledPoint, VectorAssembler}
 //import org.apache.spark.ml.feature.VectorAssembler
